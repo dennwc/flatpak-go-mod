@@ -1,3 +1,4 @@
 .idea/
 go.mod.yml
+go.mod.json
 modules.txt

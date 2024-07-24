@@ -22,7 +22,8 @@ import (
 var (
 	fOut      = flag.String("out", ".", "output directory")
 	fDstPref  = flag.String("dest-pref", "", "destination prefix for generated sources directives")
-	fLinePref = flag.String("line-pref", "", "line prefix for YAML file")
+	fLinePref = flag.String("line-pref", "", "line prefix for YAML/JSON file")
+	fJSON     = flag.Bool("json", false, "use JSON instead of YAML for output")
 )
 
 func main() {
@@ -63,7 +64,12 @@ func run(out, pref, lpref, path string) error {
 		replaced[m.New.Path] = m.Old.Path
 	}
 
-	y, err := os.Create(filepath.Join(out, "go.mod.yml"))
+	yPath := filepath.Join(out, "go.mod.yml")
+	if *fJSON {
+		yPath = filepath.Join(out, "go.mod.json")
+	}
+
+	y, err := os.Create(yPath)
 	if err != nil {
 		return err
 	}
@@ -103,23 +109,39 @@ func run(out, pref, lpref, path string) error {
 	}
 
 	buf := new(bytes.Buffer)
-	encoder := yaml.NewEncoder(buf)
-	if err := encoder.Encode(yamlData); err != nil {
-		return err
-	}
+	if *fJSON {
+		if _, err := y.WriteString(lpref); err != nil {
+			return err
+		}
 
-	if err := encoder.Close(); err != nil {
-		return err
-	}
+		encoder := json.NewEncoder(y)
+		encoder.SetIndent(lpref, lpref)
+		if err := encoder.Encode(yamlData); err != nil {
+			return err
+		}
+	} else {
+		encoder := yaml.NewEncoder(buf)
+		if err := encoder.Encode(yamlData); err != nil {
+			return err
+		}
 
-	scanner := bufio.NewScanner(buf)
-	for scanner.Scan() {
-		if _, err := fmt.Fprintf(y, "%s%s\n", lpref, scanner.Text()); err != nil {
+		if err := encoder.Close(); err != nil {
+			return err
+		}
+
+		scanner := bufio.NewScanner(buf)
+		for scanner.Scan() {
+			if _, err := fmt.Fprintf(y, "%s%s\n", lpref, scanner.Text()); err != nil {
+				return err
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
 			return err
 		}
 	}
 
-	return scanner.Err()
+	return nil
 }
 
 func execIn(path string, cmd string, args ...string) error {
