@@ -115,7 +115,12 @@ func run(out, pref, lpref, path string) error {
 		}
 
 		encoder := json.NewEncoder(y)
-		encoder.SetIndent(lpref, lpref)
+		if len(lpref) == 0 {
+			encoder.SetIndent("", "  ")
+		} else {
+			encoder.SetIndent(lpref, "  ")
+		}
+
 		if err := encoder.Encode(yamlData); err != nil {
 			return err
 		}
