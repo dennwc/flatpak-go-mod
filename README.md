@@ -59,8 +59,44 @@ You can also pass `-mod=vendor` to force vendoring mode during build.
 ## Options
 
 - `line-pref` customizes indentation in YAML/JSON file
-- `dest-pref` sets a prefix for `sources.dest` paths in YAML/JSON file 
+- `dest-pref` sets a prefix for `sources.dest` paths in YAML/JSON file
 - `json` changes the output format to JSON instead of YAML
+- `module-name` optional Flatpak module name (`mymodule` produces `mymodule.go.mod.json` and `mymodule.modules.txt`)
+
+## Multi-module Flatpak builds
+
+When building multiple Go modules in a single Flatpak (e.g. a GObject library written in Go and a main app written in Go that imports said GObject library), use `-module-name` to generate separate vendored dependencies for each:
+
+```bash
+go run github.com/dennwc/flatpak-go-mod@latest -json -module-name mylibgtk ../mylib-gtk/ # Generate for the library
+go run github.com/dennwc/flatpak-go-mod@latest -json . # Generate for the main app
+```
+
+If you're working with Go workspaces, make sure to `export GOWORK=off`.
+
+Then reference them in your Flatpak manifest:
+
+```jsonc
+// ...
+{
+  "modules": [
+    {
+      "name": "mylibgtk",
+      "buildsystem": "meson",
+      "sources": [
+        { "type": "dir", "path": "../mylib-gtk/" },
+        "mylibgtk.go.mod.json"
+      ]
+    },
+    {
+      "name": "mymainapp",
+      "buildsystem": "meson",
+      "sources": [{ "type": "dir", "path": "." }, "go.mod.json"]
+    }
+  ]
+}
+// ...
+```
 
 ## License
 
