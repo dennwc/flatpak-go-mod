@@ -20,25 +20,42 @@ import (
 )
 
 var (
-	fOut      = flag.String("out", ".", "output directory")
-	fDstPref  = flag.String("dest-pref", "", "destination prefix for generated sources directives")
-	fLinePref = flag.String("line-pref", "", "line prefix for YAML/JSON file")
-	fJSON     = flag.Bool("json", false, "use JSON instead of YAML for output")
+	fOut        = flag.String("out", ".", "output directory")
+	fDstPref    = flag.String("dest-pref", "", "destination prefix for generated sources directives")
+	fLinePref   = flag.String("line-pref", "", "line prefix for YAML/JSON file")
+	fJSON       = flag.Bool("json", false, "use JSON instead of YAML for output")
+	fModuleName = flag.String("module-name", "", "optional Flatpak module name (mymodule produces mymodule.go.mod.json and mymodule.modules.txt)")
 )
 
 func main() {
 	flag.Parse()
-	if err := run(*fOut, *fDstPref, *fLinePref, flag.Arg(0)); err != nil {
+	if err := run(*fOut, *fDstPref, *fLinePref, *fModuleName, flag.Arg(0)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(out, pref, lpref, path string) error {
+func run(out, pref, lpref, moduleName, path string) error {
 	if err := goModVendor(path); err != nil {
 		return err
 	}
-	if err := os.Rename(filepath.Join(path, "vendor", "modules.txt"), filepath.Join(out, "modules.txt")); err != nil {
+
+	modulesTxtName := "modules.txt"
+	goModOutName := "go.mod.yml"
+	if *fJSON {
+		goModOutName = "go.mod.json"
+	}
+
+	if moduleName != "" {
+		modulesTxtName = moduleName + ".modules.txt"
+		if *fJSON {
+			goModOutName = moduleName + ".go.mod.json"
+		} else {
+			goModOutName = moduleName + ".go.mod.yml"
+		}
+	}
+
+	if err := os.Rename(filepath.Join(path, "vendor", "modules.txt"), filepath.Join(out, modulesTxtName)); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(filepath.Join(path, "vendor")); err != nil {
@@ -64,10 +81,7 @@ func run(out, pref, lpref, path string) error {
 		replaced[m.New.Path] = m.Old.Path
 	}
 
-	outPath := filepath.Join(out, "go.mod.yml")
-	if *fJSON {
-		outPath = filepath.Join(out, "go.mod.json")
-	}
+	outPath := filepath.Join(out, goModOutName)
 
 	f, err := os.Create(outPath)
 	if err != nil {
@@ -75,13 +89,15 @@ func run(out, pref, lpref, path string) error {
 	}
 	defer f.Close()
 
-	files := []map[string]any{
-		{
-			"type": "file",
-			"path": "modules.txt",
-			"dest": fmt.Sprintf("%svendor", pref),
-		},
+	modulesTxtEntry := map[string]any{
+		"type": "file",
+		"path": modulesTxtName,
+		"dest": fmt.Sprintf("%svendor", pref),
 	}
+	if moduleName != "" {
+		modulesTxtEntry["dest-filename"] = "modules.txt" // Go, when running in flatpak-builder, will still expect the file to be at modules.txt
+	}
+	files := []map[string]any{modulesTxtEntry}
 
 	for _, m := range mods {
 		dst, ok := replaced[m.Path]
